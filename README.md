@@ -14,7 +14,7 @@ PixieMesh.hpp,
 When,
 This is the 3rd folder.
 
-#Third party licenses
+# Third party licenses
 
 OpenSiv3D : MIT license
 
