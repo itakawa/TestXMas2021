@@ -15,7 +15,12 @@ When,
 This is the 3rd folder.
 
 #Third party licenses
+
 OpenSiv3D : MIT license
+
 TinyGLTF : MIT license
+
 json.hpp : MIT license
+
 stb_image libraries : Public domain
+
