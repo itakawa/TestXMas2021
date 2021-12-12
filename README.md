@@ -1,6 +1,8 @@
 # TestXMas2021
 Test sample for 2021 Advent Calender
 
+https://user-images.githubusercontent.com/43272572/145716884-10a39f8f-e3ba-4794-a0b4-21a9cb22d4c6.mp4
+
 # How to install
 Create a new Siv3D project and paste it into the development folder where the App folder is located.
 
