@@ -78,7 +78,6 @@ namespace s3d
 			updateView();
 			updateViewProj();
 		}
-
 		inline const Mat4x4& SIV3D_VECTOR_CALL getView() const noexcept
 		{
 			return m_view;
