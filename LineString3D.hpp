@@ -298,3 +298,6 @@ namespace std
 		a.swap(b);
 	}
 }
+
+
+#include "LineString3D.ipp"

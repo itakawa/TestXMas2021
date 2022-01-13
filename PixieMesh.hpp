@@ -5,14 +5,108 @@
 
 # include <Siv3D.hpp> // OpenSiv3D v0.6
 # include "PixieCamera.hpp"
-//# include "OBB.hpp"
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define TINYGLTF_NO_STB_IMAGE_WRITE
+#define TINYGLTF_NOEXCEPTION
+#define JSON_NOEXCEPTION
 #include "3rd/tiny_gltf.h"
 
-//# include <DirectXMath.h>
+#if 0
+bool LoadImageData(tinygltf::Image* image, const int32 image_idx, std::string* err,
+			            std::string* warn, int32 req_width, int32 req_height,
+			            const uint8* bytes, int32 size, void* user_data)
+{
+//	(void)warn;
+
+	tinygltf::LoadImageDataOption option;
+	if (user_data)
+		option = *reinterpret_cast<tinygltf::LoadImageDataOption*>(user_data);
+
+	int32 w = 0, h = 0, comp = 0, req_comp = 0;
+	uint8* data = nullptr;
+
+	// チャネル確保指定：
+	// true：画像ファイルに保存されているチャンネルを使用
+	// false：一般的なVulkan互換性のために32ビットテクスチャを強制
+	//        一部のGPUドライバーはVulkanの24ビットイメージをサポートしない
+	req_comp = option.preserve_channels ? 0 : 4;
+	int32 bits = 8;
+	int32 pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+
+	// ロードする画像がチャンネルあたり16ビットの画像である可能性あり、チャンネル/16ビットでロードしようとする。
+	// それが機能した場合は、対応する画像データを設定する。バイト表現によりポインタをunsigned charにキャストして返す。
+	// しかし、画像がチャネルあたり2バイト（16ビット）を使用することを通知するように、画像メタデータを更新
+	if (stbi_is_16_bit_from_memory(bytes, size))
+	{
+		data = reinterpret_cast<unsigned char*>(stbi_load_16_from_memory(bytes, size, &w, &h, &comp, req_comp));
+		if (data)
+		{
+			bits = 16;
+			pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT;
+		}
+	}
+
+	// この時点で、データがまだNULLの場合は、画像がNULLではなかったことを意味します
+	// チャネルあたり16ビット、通常のチャネルあたり8ビットとしてロードします
+	// 以前の画像：
+	// 画像をデコードできない場合は、解析を無視して、そのパスに従って画像を保持します
+	// この場合は壊れない
+	// FIXMEこの関数は必須で、画像が埋め込まれている場合にのみ入力する必要があります。
+	// もしもimage->uriリファレンス画像ファイルはそのままにしておきます。
+	// 画像の読み込みはすべきではありません（他の形式をサポートするため）
+
+	if (!data) data = stbi_load_from_memory(bytes, size, &w, &h, &comp, req_comp);
+	if (!data)
+	{
+		// NOTE: you can use `warn` instead of `err`
+		if (err)
+			(*err) += "Unknown image format. STB cannot decode image data for image[" +
+				std::to_string(image_idx) + "] name = \"" + image->name + "\".\n";
+		return false;
+	}
+
+	if ((w < 1) || (h < 1))
+	{
+		stbi_image_free(data);
+		if (err) (*err) += "Invalid image data for image[" + std::to_string(image_idx) + "] name = \"" + image->name + "\"\n";
+		return false;
+	}
+
+	if (req_width > 0 && req_width != w)
+	{
+		stbi_image_free(data);
+		if (err) (*err) += "Image width mismatch for image[" + std::to_string(image_idx) + "] name = \"" + image->name + "\"\n";
+		return false;
+	}
+
+	if (req_height > 0 && req_height != h)
+	{
+		stbi_image_free(data);
+		if (err) (*err) += "Image height mismatch. for image[" + std::to_string(image_idx) + "] name = \"" + image->name + "\"\n";
+		return false;
+	}
+
+	if (req_comp != 0)
+	{
+		// loaded data has `req_comp` channels(components)
+		comp = req_comp;
+	}
+
+	image->width = w;
+	image->height = h;
+	image->component = comp;
+	image->bits = bits;
+	image->pixel_type = pixel_type;
+	image->image.resize(static_cast<size_t>(w * h * comp) * size_t(bits / 8));
+	std::copy(data, data + w * h * comp * (bits / 8), image->image.begin());
+
+	stbi_image_free(data);
+	return true;
+}
+#endif
+
 using namespace DirectX;
 #define CPUSKINNING
 #define BASIS 0			//BASIS
@@ -300,6 +394,8 @@ public:
 		return obbVisible;
 	}
 
+
+
     void initModel( MODELTYPE modeltype, const Size& sceneSize, Use str=NOTUSE_STRING, Use morph=NOTUSE_MORPH,
 										 DISPLACEFUNC = nullptr,
 										 Use boundbox=HIDDEN_BOUNDBOX, uint32 cycleframe = 60, int32 animeid=-1)
@@ -308,7 +404,11 @@ public:
         std::string err, warn;
 		bool result;
 		tinygltf::TinyGLTF loader;
-
+#if 0
+		tinygltf::LoadImageDataFunction loadImageData = LoadImageData;
+		void* vptr;
+		tinygltf::TinyGLTF::SetImageLoader(loadImageData,vptr);
+#endif
 		result = loader.LoadBinaryFromFile(&gltfModel, &err, &warn, textFile.narrow());
 		if (!result) result = loader.LoadASCIIFromFile(&gltfModel, &err, &warn, textFile.narrow());
 
@@ -429,7 +529,7 @@ public:
         Mat4x4 matworld = mat * matlocal * matparent;
 		np.matWorld = matworld;
 
-		for (int32 cc = 0; cc < node.children.size(); cc++)
+		for (uint32 cc = 0; cc < node.children.size(); cc++)
             gltfCalcSkeleton(gltfmodel, matworld, node.children[cc], nodeParams );
 	}
 
@@ -438,18 +538,18 @@ public:
 		obbVisible = boundbox ;
 		nodeParams.resize( gltfModel.nodes.size() );
 
-		for (int32 nn = 0; nn < gltfModel.nodes.size(); nn++)
+		for (uint32 nn = 0; nn < gltfModel.nodes.size(); nn++)
 			gltfSetupPosture( gltfModel, nn, nodeParams, usestr );
 
 		if (usestr != USE_STRING)
 		{
-			for (int32 nn = 0; nn < gltfModel.nodes.size(); nn++)
+			for (uint32 nn = 0; nn < gltfModel.nodes.size(); nn++)
 			{
 				auto& mn = gltfModel.nodes[nn];
 				if (mn.mesh >= 0)
 					gltfCalcSkeleton(gltfModel, Mat4x4::Identity(), nn, nodeParams);
 
-				for (int32 cc = 0; cc < mn.children.size(); cc++)
+				for (uint32 cc = 0; cc < mn.children.size(); cc++)
 					gltfCalcSkeleton(gltfModel, Mat4x4::Identity(), mn.children[cc], nodeParams);
 			}
 		}
@@ -458,7 +558,7 @@ public:
 		if (gltfModel.skins.size() > 0)
 		{
 			Joints.resize(gltfModel.skins.size());
-			for (int32 nn = 0; nn < gltfModel.nodes.size(); nn++)
+			for (uint32 nn = 0; nn < gltfModel.nodes.size(); nn++)
 			{
 				auto& mn = gltfModel.nodes[nn];
 				if (mn.skin >= 0)         //LightとCameraをスキップ
@@ -470,7 +570,7 @@ public:
 					auto& ibmbv = gltfModel.bufferViews[ibma.bufferView];
 					auto  ibmd = gltfModel.buffers[ibmbv.buffer].data.data() + ibma.byteOffset + ibmbv.byteOffset;
 
-					for (int32 ii = 0; ii < msns.joints.size(); ii++)
+					for (uint32 ii = 0; ii < msns.joints.size(); ii++)
 					{
 						Mat4x4 ibm = *(Mat4x4*)&ibmd[ii * sizeof(Mat4x4)];
 						Mat4x4& matworld = nodeParams[msns.joints[ii]].matWorld;
@@ -515,9 +615,9 @@ public:
 
         //静的モデルのサイズ、中心オフセットを保存
         __m128 rot = XMQuaternionRotationRollPitchYaw(ToRadians(eRot.x), ToRadians(eRot.y), ToRadians(eRot.z));
-        Mat4x4 mrot =  Mat4x4(Quaternion(rot)*qRot);
-		Float3 t = Pos + rPos;
-		Mat4x4 mat = Mat4x4::Identity().Scale(Float3{ -Sca.x,Sca.y,Sca.z }) * mrot * Mat4x4::Identity().Translate(t);        
+//        Mat4x4 mrot =  Mat4x4(Quaternion(rot)*qRot);
+//		Float3 t = Pos + rPos;
+//		Mat4x4 mat = Mat4x4::Identity().Scale(Float3{ -Sca.x,Sca.y,Sca.z }) * mrot * Mat4x4::Identity().Translate(t);        
 
 		ob.setOrientation(Quaternion(rot) * qRot);
 		ob.setPos(obbCenter = vmin + (vmax - vmin) / 2 );
@@ -545,9 +645,9 @@ public:
             auto& pr = gltfModel.meshes[node.mesh].primitives[pp];
             auto& map = gltfModel.accessors[pr.attributes["POSITION"]];
 
-			size_t opos, otex, onor, ojoints, oweights,oidx;
-            int32 type_p,type_t,type_n,type_j,type_w,type_i;
-			int32 stride_p, stride_t, stride_n, stride_j, stride_w, stride_i;
+			size_t opos=0, otex=0, onor=0, ojoints=0, oweights=0, oidx=0;
+            int32 type_p=0, type_t=0, type_n=0, type_j=0, type_w=0, type_i=0;
+			int32 stride_p=0, stride_t=0, stride_n=0, stride_j=0, stride_w=0, stride_i=0;
 
 //Meshes->Primitive->Accessor(p,i)->BufferView(p,i)->Buffer(p,i)
 			auto& bpos = *getBuffer(gltfModel, pr, "POSITION", &opos, &stride_p, &type_p);        //type_p=5126(float)
@@ -559,7 +659,7 @@ public:
 
             //頂点座標を生成
             Array<Vertex3D> vertices;
-            for (int32 vv = 0; vv < map.count; vv++)
+            for (uint32 vv = 0; vv < map.count; vv++)
             {
 				Vertex3D mv;
 				float* basispos = (float*)&bpos.data.at(vv * stride_p + opos);
@@ -574,12 +674,12 @@ public:
 				// ２、３個しか合成しないのでたくさんあっても負荷は大したことない
 				if ( pr.targets.size() && weights.size() )
 				{
-					for (int32 tt = 0; tt < weights.size(); tt++)
+					for (uint32 tt = 0; tt < weights.size(); tt++)
 					{
 						if (weights[tt] == 0) continue;
 
 // Meshes->Primitive->Target->POSITION->Accessor(p,i)->BufferView(p,i)->Buffer(p,i)
-						size_t opos, onor;
+						size_t opos=0, onor=0;
 						auto& mtpos = *getBuffer(gltfModel, pr, tt, "POSITION", &opos, &stride_p, &type_p);
 						auto& mtnor = *getBuffer(gltfModel, pr, tt, "NORMAL", &onor, &stride_n, &type_n);
 						float* spos = (float*)&mtpos.data.at(vv * stride_p + opos);
@@ -757,9 +857,9 @@ public:
                 for (int32 tt = 0; tt < pr.targets.size(); tt++)
                 {
                     //Meshes->Primitive->Target->POSITION->Accessor(p,i)->BufferView(p,i)->Buffer(p,i)
-					size_t opos, onor;
-					int32 stride;
-                    int32 type_p,type_n;
+					size_t opos=0, onor=0;
+					int32 stride=0;
+                    int32 type_p=0, type_n=0;
 
                     auto mtpos = getBuffer(gltfModel, pr, tt, "POSITION", &opos, &stride, &type_p);
                     auto mtnor = getBuffer(gltfModel, pr, tt, "NORMAL", &onor, &stride, &type_n);
@@ -930,9 +1030,9 @@ public:
 			auto& pr = gltfModel.meshes[node.mesh].primitives[pp];
 			auto& map = gltfModel.accessors[pr.attributes["POSITION"]];
 
-			size_t opos, otex, onormal, ojoints, oweights, oidx;
-			int32 stride, texstride;
-			int32 type_p, type_t, type_n, type_j, type_w, type_i;
+			size_t opos=0, otex=0, onormal=0, ojoints=0, oweights=0, oidx=0;
+			int32 stride=0, texstride=0;
+			int32 type_p=0, type_t=0, type_n=0, type_j=0, type_w=0, type_i=0;
 
 //TODO この辺毎度とってくるの無駄
 			auto bpos = getBuffer(gltfModel, pr, "POSITION", &opos, &stride, &type_p);
@@ -1640,9 +1740,9 @@ public:
 								auto& pr = gm.meshes[node.mesh].primitives[pp];
 								auto& map = gm.accessors[pr.attributes["POSITION"]];
 
-								size_t opos, otex, onor, ojoints, oweights, oidx;
-								int32 type_p, type_t, type_n, type_j, type_w, type_i;
-								int32 stride_p, stride_t, stride_n, stride_j, stride_w, stride_i;
+								size_t opos=0, otex=0, onor=0, ojoints=0, oweights=0, oidx=0;
+								int32 type_p=0, type_t=0, type_n=0, type_j=0, type_w=0, type_i=0;
+								int32 stride_p=0, stride_t=0, stride_n=0, stride_j=0, stride_w=0, stride_i=0;
 
 								//Meshes->Primitive->Accessor(p,i)->BufferView(p,i)->Buffer(p,i)
 								auto& bpos = *getBuffer(gm, pr, "POSITION", &opos, &stride_p, &type_p);        //type_p=5126(float)
@@ -1996,11 +2096,10 @@ public:
 
         AnimeModel& ani = aniModel;
         __m128 qrot = XMQuaternionRotationRollPitchYaw(ToRadians(eRot.x), ToRadians(eRot.y), ToRadians(eRot.z));
-		qrot = qRot * Quaternion(qrot);
+		Quaternion q = qRot * Quaternion(qrot);
 
-		Mat4x4 mrot;
-		if (!qSpin.isIdentity()) qrot *= qSpin;
-		mrot = Mat4x4(qrot);
+		if ( !qSpin.isIdentity() ) q *= qSpin;
+		Mat4x4 mrot = Mat4x4(q);
 
         Float3 trans = Pos + rPos;
 
@@ -2050,7 +2149,7 @@ public:
                             morphmv[ii].normal += buf[morphidx * NMORPH + iii][ii].normal * (1 - wt[0]) +
                                                   buf[morphidx * NMORPH + iii][ii].normal * wt[0];
                         }
-
+ 
 						else						//マニュアルウェイト以外(ウェイトテーブルによるブリンクと表情遷移)
                         {
                             float weight = (wt[idx] < 0) ? 0 : wt[idx];
@@ -2143,7 +2242,7 @@ public:
 									 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //90 
 									 96, 97, 98, 99,100,101,102,103,104,105,106,107,108,109,110,111, //A0 
 									112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127, //B0 
-									 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //C0 
+									128,129,130,131,132, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //C0 
 									 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //D0 
 									 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //E0 
 									 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};//F0 
@@ -2226,13 +2325,13 @@ public:
 
 		else //円周描画
 		{
-			for (int32 i = start; i <= last; i++)
+			for (uint32 i = start; i <= last; i++)
 			{
 				auto ascii = text.substr(i, 1)[0];
 				if (ascii == ' ' || ascii >= sizeof(CODEMAP)) continue;
 				const uint8& code = CODEMAP[ascii];
 
-				Quaternion r = Quaternion::RotateY( ToRadians(-i * kerning) );		//文字向き					                                     ToRadians(eRot.z) );	//向き
+				Quaternion r = Quaternion::RotateY( ToRadians(-(signed)i * kerning) );		//文字向き					                                     ToRadians(eRot.z) );	//向き
 
 				Float3 tt;
 
@@ -2242,7 +2341,7 @@ public:
 				mat = Mat4x4::Identity().rotated(r).scaled(Float3{ Sca }).translated(Pos + tt);
 
 				Float3 pp = mat.transformPoint(Pos);
-				Float3 up = Float3{0,1,0}, fwd = (pp - Pos).normalize();
+				Float3 up = Float3{0,1,0};//, fwd = (pp - Pos).normalize();
 				Quaternion qrot = camera.getQLookAt(pp, Pos, &up);
 
 				Quaternion er = Quaternion::RollPitchYaw(ToRadians(eRot.x), ToRadians(eRot.y), ToRadians(eRot.z));	//向き
